@@ -22,9 +22,19 @@ def get_int_value_default(_config: dict, _key, default):
     return int(_config.get(_key))
 
 
-# 获取最大和最小步数
+# 获取当前时间对应的最大和最小步数
 def get_min_max_by_time(hour=None, minute=None):
-    return 10000, 13000
+    if hour is None:
+        hour = time_bj.hour
+    if minute is None:
+        minute = time_bj.minute
+    elapsed = min((hour * 60 + minute) / (22 * 60), 1)
+    target = random.randint(10000, 13000)
+    mid = int(target * elapsed)
+    spread = random.randint(500, 2000)
+    min_step = max(mid - spread, 500)
+    max_step = min(mid + spread, 13000)
+    return min_step, max_step
 
 
 # 虚拟ip地址
