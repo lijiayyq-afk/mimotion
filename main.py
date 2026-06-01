@@ -15,6 +15,7 @@ from util.aes_help import encrypt_data, decrypt_data
 import util.zepp_helper as zeppHelper
 import util.push_util as push_util
 
+
 # 获取默认值转int
 def get_int_value_default(_config: dict, _key, default):
     _config.setdefault(_key, default)
@@ -28,8 +29,8 @@ def get_min_max_by_time(hour=None, minute=None):
     if minute is None:
         minute = time_bj.minute
     time_rate = min((hour * 60 + minute) / (22 * 60), 1)
-    min_step = get_int_value_default(config, 'MIN_STEP', 18000)
-    max_step = get_int_value_default(config, 'MAX_STEP', 25000)
+    min_step = 10000
+    max_step = 13000
     return int(time_rate * min_step), int(time_rate * max_step)
 
 
@@ -43,13 +44,13 @@ def fake_ip():
 def desensitize_user_name(user):
     if len(user) <= 8:
         ln = max(math.floor(len(user) / 3), 1)
-        return f'{user[:ln]}***{user[-ln:]}'
-    return f'{user[:3]}****{user[-4:]}'
+        return f"{user[:ln]}***{user[-ln:]}"
+    return f"{user[:3]}****{user[-4:]}"
 
 
 # 获取北京时间
 def get_beijing_time():
-    target_timezone = pytz.timezone('Asia/Shanghai')
+    target_timezone = pytz.timezone("Asia/Shanghai")
     # 获取当前时间
     return datetime.now().astimezone(target_timezone)
 
@@ -90,7 +91,7 @@ class MiMotionRunner:
         password = str(_passwd)
         self.invalid = False
         self.log_str = ""
-        if user == '' or password == '':
+        if user == "" or password == "":
             self.error = "用户名或密码填写有误！"
             self.invalid = True
             pass
@@ -129,8 +130,11 @@ class MiMotionRunner:
                 app_token, msg = zeppHelper.grant_app_token(login_token)
                 if app_token is None:
                     self.log_str += f"login_token 失效 重新获取 last grant time: {user_token_info.get('login_token_time')}\n"
-                    login_token, app_token, user_id, msg = zeppHelper.grant_login_tokens(access_token, self.device_id,
-                                                                                         self.is_phone)
+                    login_token, app_token, user_id, msg = (
+                        zeppHelper.grant_login_tokens(
+                            access_token, self.device_id, self.is_phone
+                        )
+                    )
                     if login_token is None:
                         self.log_str += f"access_token 已失效：{msg} last grant time:{user_token_info.get('access_token_time')}\n"
                     else:
@@ -153,8 +157,9 @@ class MiMotionRunner:
             self.log_str += "登录获取accessToken失败：%s" % msg
             return None
         # print(f"device_id:{self.device_id} isPhone: {self.is_phone}")
-        login_token, app_token, user_id, msg = zeppHelper.grant_login_tokens(access_token, self.device_id,
-                                                                             self.is_phone)
+        login_token, app_token, user_id, msg = zeppHelper.grant_login_tokens(
+            access_token, self.device_id, self.is_phone
+        )
         if login_token is None:
             self.log_str += f"登录提取的 access_token 无效：{msg}"
             return None
@@ -197,29 +202,34 @@ def run_single_account(total, idx, user_mi, passwd_mi):
         runner = MiMotionRunner(user_mi, passwd_mi)
         exec_msg, success = runner.login_and_post_step(min_step, max_step)
         log_str += runner.log_str
-        log_str += f'{exec_msg}\n'
-        exec_result = {"user": user_mi, "success": success,
-                       "msg": exec_msg}
+        log_str += f"{exec_msg}\n"
+        exec_result = {"user": user_mi, "success": success, "msg": exec_msg}
     except:
         log_str += f"执行异常:{traceback.format_exc()}\n"
         log_str += traceback.format_exc()
-        exec_result = {"user": user_mi, "success": False,
-                       "msg": f"执行异常:{traceback.format_exc()}"}
+        exec_result = {
+            "user": user_mi,
+            "success": False,
+            "msg": f"执行异常:{traceback.format_exc()}",
+        }
     print(log_str)
     return exec_result
 
 
 def execute():
-    user_list = users.split('#')
-    passwd_list = passwords.split('#')
+    user_list = users.split("#")
+    passwd_list = passwords.split("#")
     exec_results = []
     if len(user_list) == len(passwd_list):
         idx, total = 0, len(user_list)
         if use_concurrent:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                exec_results = executor.map(lambda x: run_single_account(total, x[0], *x[1]),
-                                            enumerate(zip(user_list, passwd_list)))
+                exec_results = executor.map(
+                    lambda x: run_single_account(total, x[0], *x[1]),
+                    enumerate(zip(user_list, passwd_list)),
+                )
         else:
             for user_mi, passwd_mi in zip(user_list, passwd_list):
                 exec_results.append(run_single_account(total, idx, user_mi, passwd_mi))
@@ -233,25 +243,27 @@ def execute():
         push_results = []
         for result in exec_results:
             push_results.append(result)
-            if result['success'] is True:
+            if result["success"] is True:
                 success_count += 1
         summary = f"\n执行账号总数{total}，成功：{success_count}，失败：{total - success_count}"
         print(summary)
         push_util.push_results(push_results, summary, push_config)
     else:
-        print(f"账号数长度[{len(user_list)}]和密码数长度[{len(passwd_list)}]不匹配，跳过执行")
+        print(
+            f"账号数长度[{len(user_list)}]和密码数长度[{len(passwd_list)}]不匹配，跳过执行"
+        )
         exit(1)
 
 
 def prepare_user_tokens() -> dict:
     data_path = r"encrypted_tokens.data"
     if os.path.exists(data_path):
-        with open(data_path, 'rb') as f:
+        with open(data_path, "rb") as f:
             data = f.read()
         try:
             decrypted_data = decrypt_data(data, aes_key, None)
             # 假设原始明文为 UTF-8 编码文本
-            return json.loads(decrypted_data.decode('utf-8', errors='strict'))
+            return json.loads(decrypted_data.decode("utf-8", errors="strict"))
         except:
             print("密钥不正确或者加密内容损坏 放弃token")
             return dict()
@@ -263,7 +275,7 @@ def persist_user_tokens():
     data_path = r"encrypted_tokens.data"
     origin_str = json.dumps(user_tokens, ensure_ascii=False)
     cipher_data = encrypt_data(origin_str.encode("utf-8"), aes_key, None)
-    with open(data_path, 'wb') as f:
+    with open(data_path, "wb") as f:
         f.write(cipher_data)
         f.flush()
         f.close()
@@ -277,7 +289,7 @@ if __name__ == "__main__":
     if os.environ.__contains__("AES_KEY") is True:
         aes_key = os.environ.get("AES_KEY")
         if aes_key is not None:
-            aes_key = aes_key.encode('utf-8')
+            aes_key = aes_key.encode("utf-8")
             if len(aes_key) == 16:
                 encrypt_support = True
         if encrypt_support:
@@ -293,30 +305,32 @@ if __name__ == "__main__":
         try:
             config = dict(json.loads(os.environ.get("CONFIG")))
         except:
-            print("CONFIG格式不正确，请检查Secret配置，请严格按照JSON格式：使用双引号包裹字段和值，逗号不能多也不能少")
+            print(
+                "CONFIG格式不正确，请检查Secret配置，请严格按照JSON格式：使用双引号包裹字段和值，逗号不能多也不能少"
+            )
             traceback.print_exc()
             exit(1)
         # 创建推送配置对象
         push_config = push_util.PushConfig(
-            push_plus_token=config.get('PUSH_PLUS_TOKEN'),
-            push_plus_hour=config.get('PUSH_PLUS_HOUR'),
-            push_plus_max=get_int_value_default(config, 'PUSH_PLUS_MAX', 30),
-            push_wechat_webhook_key=config.get('PUSH_WECHAT_WEBHOOK_KEY'),
-            telegram_bot_token=config.get('TELEGRAM_BOT_TOKEN'),
-            telegram_chat_id=config.get('TELEGRAM_CHAT_ID')
+            push_plus_token=config.get("PUSH_PLUS_TOKEN"),
+            push_plus_hour=config.get("PUSH_PLUS_HOUR"),
+            push_plus_max=get_int_value_default(config, "PUSH_PLUS_MAX", 30),
+            push_wechat_webhook_key=config.get("PUSH_WECHAT_WEBHOOK_KEY"),
+            telegram_bot_token=config.get("TELEGRAM_BOT_TOKEN"),
+            telegram_chat_id=config.get("TELEGRAM_CHAT_ID"),
         )
-        sleep_seconds = config.get('SLEEP_GAP')
-        if sleep_seconds is None or sleep_seconds == '':
+        sleep_seconds = config.get("SLEEP_GAP")
+        if sleep_seconds is None or sleep_seconds == "":
             sleep_seconds = 5
         sleep_seconds = float(sleep_seconds)
-        users = config.get('USER')
-        passwords = config.get('PWD')
+        users = config.get("USER")
+        passwords = config.get("PWD")
         if users is None or passwords is None:
             print("未正确配置账号密码，无法执行")
             exit(1)
         min_step, max_step = get_min_max_by_time()
-        use_concurrent = config.get('USE_CONCURRENT')
-        if use_concurrent is not None and use_concurrent == 'True':
+        use_concurrent = config.get("USE_CONCURRENT")
+        if use_concurrent is not None and use_concurrent == "True":
             use_concurrent = True
         else:
             print(f"多账号执行间隔：{sleep_seconds}")
